@@ -1,0 +1,107 @@
+---
+title: "Choose time slots for a talk"
+author: "Tomás E. Tecce"
+output: html_notebook
+---
+
+## The problem
+
+I need to give an introductory talk to a class of students who will be
+taking an online course. I have already selected a number of possible time
+slots for the talks, based on my own availability. The students are
+located in different countries and time zones, and I'm willing to repeat
+my talk at least once in order to accomodate this.
+
+I've asked the students to complete a poll, indicating which of the time
+slots they prefer; they can choose more than one option. What I would like
+to do is to use that information to choose two time slots in order to
+maximize the number of students who can attend the talk.
+
+
+## The data
+
+The poll data was collected using [Doodle](http://doodle.com). People were
+asked to choose among 30 possible time slots, and multiple choices were
+allowed. The results are collected in a CSV file which contains one row
+per person, and the columns correspond to the different possible time
+slots (labeled from S01 to S30).
+
+```{r}
+# Read the data file
+df <- read.csv("data.csv", na.strings="", stringsAsFactors=FALSE)
+
+# Convert the data from "OK" and NA to 0 and 1, then find the total number
+# of people who chose each of the different time slots
+df[is.na(df)] <- 0
+df[df == "OK"] <- 1
+df[,2:31] <- apply(df[,2:31], 2, as.numeric)
+
+ts_sums <- colSums(df)
+```
+
+The maximum number of people choosing the same time slot is
+`r max(ts_sums[2:31])`, which is much less than the total number of
+students (`r dim(df)[1]`). Thus I cannot get away with giving just one
+talk if I want at least 50 per cent of the students to attend the course
+introduction.
+
+```{r}
+library(ggplot2)
+
+fig <- ggplot(data=data.frame(timeslots=colnames(df)[2:31],
+                              counts=ts_sums[2:31]),
+              aes(x=timeslots, y=counts)) + geom_bar(stat="identity", fill="steel blue")
+print(fig)
+```
+
+## The method
+
+To find two timeslots that maximize the number of distinct students that
+attend the introduction, I use the following method.
+
+First, I build new columns, one for each possible permutation of time
+slots (slot #1 and slot #2, slot #1 and slot #3, etc). Each row contains 1
+if the student can attend either of the slots, and 0 otherwise. 
+
+```{r}
+library(dplyr)
+
+new_names <- sapply(combn(names(df[,2:31]), 2, simplify = FALSE),
+                    function(x) { paste(x, collapse="") })
+
+for (i in 1:length(new_names)) {
+  df <- mutate(df, newcol=as.numeric(df[substr(new_names[i], 1, 3)] |
+                                       df[substr(new_names[i], 4, 6)]))
+  colnames(df)[colnames(df)=="newcol"] <- new_names[i]
+}
+```
+
+Then we sum the columns to find which time slot combination has the most
+attendee count.
+
+```{r}
+ts_sums <- colSums(df[,32:dim(df)[2]])
+ts_sums[order(-ts_sums)][1:10]
+```
+
+Thus, we find that by choosing slots #3 and #30 we could potentially have
+63 students attending (54 per cent of the total).
+
+We can repeat the exercise for 3 time slots:
+
+```{r}
+new_names <- sapply(combn(names(df[,2:31]), 3, simplify = FALSE),
+                    function(x) { paste(x, collapse="") })
+enddim <- dim(df)[2]
+
+for (i in 1:length(new_names)) {
+  df <- mutate(df, newcol=as.numeric(df[substr(new_names[i], 1, 3)] |
+                                       df[substr(new_names[i], 4, 6)] |
+                                       df[substr(new_names[i], 7, 9)]))
+  colnames(df)[colnames(df)=="newcol"] <- new_names[i]
+}
+
+ts_sums <- colSums(df[,enddim+1:dim(df)[2]])
+ts_sums[order(-ts_sums)][1:10]
+```
+
